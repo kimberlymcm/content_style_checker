@@ -8,6 +8,8 @@ import {
   Text,
   Badge,
   useToast,
+  Checkbox,
+  HStack,
 } from '@chakra-ui/react';
 import axios from 'axios';
 
@@ -22,11 +24,17 @@ interface ContentIssue {
 interface ContentResponse {
   issues: ContentIssue[];
   improved_text: string;
+  llm_details?: {
+    prompt: string;
+    response: string;
+    model: string;
+  };
 }
 
 export const ContentAnalyzer = (): ReactElement => {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [useLLM, setUseLLM] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<ContentResponse | null>(null);
   const toast = useToast();
 
@@ -44,7 +52,8 @@ export const ContentAnalyzer = (): ReactElement => {
     setIsLoading(true);
     try {
       const response = await axios.post<ContentResponse>('http://localhost:8000/analyze', {
-        text: content
+        text: content,
+        use_llm: useLLM
       });
       setAnalysisResult(response.data);
     } catch (error) {
@@ -122,14 +131,22 @@ export const ContentAnalyzer = (): ReactElement => {
           size="lg"
           minH="200px"
         />
-        <Button
-          mt={4}
-          colorScheme="blue"
-          onClick={handleAnalyze}
-          isLoading={isLoading}
-        >
-          Analyze Content
-        </Button>
+        <HStack mt={4} spacing={4}>
+          <Checkbox
+            isChecked={useLLM}
+            onChange={(e) => setUseLLM(e.target.checked)}
+            colorScheme="blue"
+          >
+            Use AI for enhanced analysis
+          </Checkbox>
+          <Button
+            colorScheme="blue"
+            onClick={handleAnalyze}
+            isLoading={isLoading}
+          >
+            Analyze Content
+          </Button>
+        </HStack>
       </Box>
 
       {analysisResult && (
@@ -163,6 +180,31 @@ export const ContentAnalyzer = (): ReactElement => {
                 </Text>
                 <Text>{analysisResult.improved_text}</Text>
               </Box>
+              {analysisResult.llm_details && (
+                <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
+                  <Text fontSize="lg" fontWeight="bold" mb={4}>
+                    AI Analysis Details
+                  </Text>
+                  <Stack spacing={4}>
+                    <Box>
+                      <Text fontWeight="bold">Model:</Text>
+                      <Text>{analysisResult.llm_details.model}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontWeight="bold">Prompt:</Text>
+                      <Box p={2} bg="white" borderRadius="md" whiteSpace="pre-wrap">
+                        {analysisResult.llm_details.prompt}
+                      </Box>
+                    </Box>
+                    <Box>
+                      <Text fontWeight="bold">Response:</Text>
+                      <Box p={2} bg="white" borderRadius="md" whiteSpace="pre-wrap">
+                        {analysisResult.llm_details.response}
+                      </Box>
+                    </Box>
+                  </Stack>
+                </Box>
+              )}
             </>
           ) : (
             <Text color="green.500" fontWeight="bold">

@@ -215,9 +215,39 @@ def check_contractions(text: str) -> List[ContentIssue]:
             ))
     return issues
 
+def check_third_person_references(text: str) -> List[ContentIssue]:
+    """Check for third-person references that should be converted to first/second person."""
+    patterns = [
+        (r'\bVeterans\s+(?:can|may|should|must|will|could)\b', lambda m: f"You can{m.group(0)[m.group(0).find(' ')+1:]}"),
+        (r'\bVA\s+(?:offers|provides|gives|helps)\b', lambda m: f"We {m.group(0)[m.group(0).find(' ')+1:]}"),
+        (r'\bVeterans(?:\s+who\s+|\s+)(?:are|have|own|need|want|must|should)\b', lambda m: "If you " + m.group(0).split(" ", 1)[1]),
+        (r'\b(?:their|his|her)\s+benefits\b', "your benefits"),
+        (r"\bVeterans(?:'s?)?\s*benefits\b", "your benefits"),
+        (r'\bVeterans\b(?!\s+(?:Day|Affairs|Health|Benefits))', "you"),
+        (r'\bthe\s+Veteran\b', "you"),
+    ]
+    
+    issues = []
+    for pattern, replacement in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            # Handle callable replacements
+            if callable(replacement):
+                suggestion = replacement(match)
+            else:
+                suggestion = replacement
+                
+            issues.append(ContentIssue(
+                type="third_person",
+                description="Use 'you' to address Veterans directly, or 'we' when referring to VA",
+                start=match.start(),
+                end=match.end(),
+                suggestion=suggestion
+            ))
+    return issues
+
 def apply_non_overlapping_fixes(text: str, issues: List[ContentIssue]) -> str:
     # Sort issues by priority and position
-    priority_order = {"complex_word": 0, "contraction": 1, "abbreviation": 2, "passive_voice": 3}
+    priority_order = {"complex_word": 0, "contraction": 1, "abbreviation": 2, "passive_voice": 3, "third_person": 4}
     sorted_issues = sorted(issues, key=lambda x: (priority_order[x.type], -x.end))  # Sort by priority and reverse position
     
     # Create a list of non-overlapping changes
@@ -256,25 +286,37 @@ def improve_with_llm(text: str) -> tuple[str, List[ContentIssue], Dict[str, str]
 
 Key style rules to follow:
 
+Voice and Person:
+- Address the reader directly using "you" and "your" (second person)
+- Use "we," "us," and "our" when referring to VA (first person)
+- Don't talk about "Veterans" in third person - talk directly to them
+- Convert third-person references about Veterans to second person ("you")
+- Convert passive voice to active voice using "we" for VA actions
+- When needed, identify specific audiences while still using "you"/"your"
+
+Examples of audience identification:
+❌ "Dependent family members of Veterans can get counseling"
+✅ "If you're a dependent family member of a Veteran, you can get counseling"
+
+❌ "Veterans who own small businesses may qualify for advantages"
+✅ "If you own a small business, you may qualify for advantages"
+
 Content Voice and Tone:
-- Address Veterans directly using "you"
-- Use "we" when referring to VA
 - Be direct, confident, and empathetic
 - Use conversational language while maintaining professionalism
+- Write like you're having a conversation with one person
+
+Examples of voice conversion:
+❌ "Veterans may view their benefits" → ✅ "You can view your benefits"
+❌ "VA offers services" → ✅ "We offer services"
+❌ "Veterans can apply" → ✅ "You can apply"
 
 Plain Language Requirements:
 - Use simple, everyday words
-- Avoid jargon, technical terms, and bureaucratic language
+- Avoid jargon and bureaucratic language
 - Keep sentences short and clear
 - Break complex information into digestible chunks
-- Use active voice
 - Use contractions to be conversational (e.g., "can't" instead of "cannot")
-
-Abbreviations and Acronyms:
-- Spell out abbreviations on first use
-- Don't create new acronyms
-- Use plain language labels instead of program names
-- Only use acronyms that are widely known by Veterans
 
 Formatting and Structure:
 - Use proper capitalization (don't capitalize generic terms)
@@ -287,7 +329,7 @@ Original text:
 {text}
 
 Please provide:
-1. The improved text that follows all VA.gov guidelines
+1. The improved text that follows all VA.gov guidelines, especially using "we" and "you"
 2. A list of specific changes made and why they align with VA.gov style
 """
     
@@ -296,7 +338,7 @@ Please provide:
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are an expert VA.gov content specialist who ensures all content follows VA style guidelines perfectly."},
+                {"role": "system", "content": "You are an expert VA.gov content specialist who ensures all content follows VA style guidelines perfectly. Your main focus is converting text to use 'we' for VA and 'you' for Veterans, while properly identifying specific audiences when needed."},
                 {"role": "user", "content": prompt.format(text=text)}
             ],
             temperature=0.3
@@ -353,10 +395,11 @@ async def analyze_content(request: ContentRequest):
     issues.extend(check_contractions(text))
     issues.extend(check_abbreviations(text))
     issues.extend(check_passive_voice(text))
+    issues.extend(check_third_person_references(text))  # Add the new check
     
     improved_text = apply_non_overlapping_fixes(text, issues)
     return ContentResponse(
         issues=issues, 
         improved_text=improved_text,
         llm_details=llm_details
-    ) 
+    )

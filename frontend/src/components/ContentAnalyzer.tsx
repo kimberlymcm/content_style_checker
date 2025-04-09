@@ -79,6 +79,8 @@ export const ContentAnalyzer = (): ReactElement => {
         return 'purple';
       case 'contraction':
         return 'blue';
+      case 'third_person':
+        return 'green';
       default:
         return 'gray';
     }
@@ -215,4 +217,4 @@ export const ContentAnalyzer = (): ReactElement => {
       )}
     </Box>
   );
-}; 
+};
